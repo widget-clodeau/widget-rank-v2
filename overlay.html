@@ -47,6 +47,25 @@
   .dots span { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,.3); }
   .dots .w { background: var(--win); } .dots .l { background: var(--loss); }
 
+  /* ---- Pastilles : agencement / position ---- */
+  .info { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .txt .info { margin-top: 8px; }
+  .cl-grid .stats { display: grid; grid-template-columns: repeat(2, max-content); gap: 6px; justify-items: start; }
+  .cl-col .stats { flex-direction: column; align-items: flex-start; gap: 5px; }
+  .outer { display: inline-flex; align-items: center; gap: 10px; }
+  .outer.pos-below { flex-direction: column; align-items: flex-start; }
+  .anim-float .outer { animation: float 3s ease-in-out infinite; }
+  .anim-float .outer .box { animation: none; }
+  .info.out .chip, .info.out .dots { background: linear-gradient(rgba(0,0,0,.22), rgba(0,0,0,.22)), var(--bg); padding: 6px 11px; border-radius: min(var(--radius), 99px); }
+  .info.out .dots { padding: 8px 11px; }
+  .bg-on .info.out .chip, .bg-on .info.out .dots { box-shadow: 0 4px 14px var(--shadow-color); }
+  .bd-on .info.out .chip, .bd-on .info.out .dots { border: var(--border); }
+  .mini-main { display: flex; align-items: center; gap: 10px; }
+  .l-minimal .box.mini-below { display: inline-grid; grid-template-areas: "icon main" "icon info"; justify-items: start; column-gap: var(--gap); row-gap: 6px; }
+  .l-minimal .box.mini-below .icon { grid-area: icon; }
+  .l-minimal .box.mini-below .mini-main { grid-area: main; }
+  .l-minimal .box.mini-below .info { grid-area: info; }
+
   /* ---- Layout : pill (v1) ---- */
   .l-pill .extra { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
   .l-pill .rowline { display: flex; align-items: baseline; gap: 8px; }
@@ -110,6 +129,7 @@
     lang: get("lang", "fr"), rankLang: get("rn", "en"),
     period: get("p", "stream"),
     label: get("lbl", ""),
+    chipsLayout: get("cl", "row"), chipsPos: get("cp", "right"), chipsWhere: get("co", "in"),
     interval: Math.max(30, num("i", 60)) * 1000,
     demo: get("demo", "0") === "1"
   };
@@ -169,6 +189,9 @@
   };
   for (const k in css) root.style.setProperty(k, css[k]);
   root.className = `l-${cfg.layout}` + (cfg.align === "right" ? " align-right" : "");
+  root.classList.add("cl-" + cfg.chipsLayout);
+  if (cfg.bg) root.classList.add("bg-on");
+  if (cfg.bg && cfg.border) root.classList.add("bd-on");
   if (cfg.anim.has("float")) root.classList.add("anim-float");
   if (cfg.anim.has("pulse")) root.classList.add("anim-pulse");
 
@@ -238,32 +261,38 @@
 
   function render(d) {
     const p = parts(d);
+    const out = cfg.chipsWhere === "out";
+    const below = cfg.chipsPos === "below";
+    const info = p.chips || p.dots ? `<div class="info${out ? " out" : ""}">${p.chips}${p.dots}</div>` : "";
+    const inInfo = out ? "" : info;
     let html;
     switch (cfg.layout) {
       case "card":
         html = `<div class="${boxClass()}">
           <div class="head">${p.icon}<div class="txt">${p.label}${p.rank}${p.rr ? `<div class="rowline">${p.rr}</div>` : ""}</div></div>
-          ${p.bar}
-          ${p.chips || p.dots ? `<div class="foot">${p.chips}${p.dots}</div>` : ""}
+          ${p.bar}${inInfo}
         </div>`;
         break;
       case "minimal": {
-        const items = [p.rank, p.rr, p.chips].filter(Boolean);
-        html = `<div class="${boxClass()}">${p.icon}${items.join('<span class="sep">•</span>')}${p.dots}</div>`;
+        const items = [p.rank, p.rr].filter(Boolean);
+        html = `<div class="${boxClass()}${below && !out ? " mini-below" : ""}">${p.icon}<div class="mini-main">${items.join('<span class="sep">•</span>')}</div>${inInfo}</div>`;
         break;
       }
-      case "banner":
-        html = `<div class="${boxClass()}">${p.icon}<div class="txt">${p.label}${p.rank}${p.bar}</div>
-          ${p.rr || p.chips || p.dots ? `<div class="vsep"></div><div class="txt" style="gap:6px">${p.rr}${p.chips}${p.dots}</div>` : ""}
+      case "banner": {
+        const side = (!below ? inInfo : "");
+        html = `<div class="${boxClass()}">${p.icon}<div class="txt">${p.label}${p.rank}${p.bar}${below ? inInfo : ""}</div>
+          ${p.rr || side ? `<div class="vsep"></div><div class="txt" style="gap:6px">${p.rr}${side}</div>` : ""}
         </div>`;
         break;
+      }
       default: // pill (v1)
         html = `<div class="${boxClass()}">${p.icon}<div class="txt">
           ${p.label || p.rr ? `<div class="label">${p.label ? esc(cfg.label) : ""}${p.label && p.rr ? " · " : ""}${p.rr ? (d.rr + " RR") : ""}</div>` : ""}
-          ${p.rank}${p.bar}</div>
-          ${p.chips || p.dots ? `<div class="extra">${p.chips}${p.dots}</div>` : ""}
+          ${p.rank}${p.bar}${below ? inInfo : ""}</div>
+          ${!below ? inInfo : ""}
         </div>`;
     }
+    if (out && info) html = `<div class="outer pos-${below ? "below" : "right"}">${html}${info}</div>`;
     root.innerHTML = html;
   }
 
