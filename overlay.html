@@ -130,7 +130,7 @@
     period: get("p", "stream"),
     label: get("lbl", ""),
     chipsLayout: get("cl", "row"), chipsPos: get("cp", "right"), chipsWhere: get("co", "in"),
-    interval: Math.max(30, num("i", 60)) * 1000,
+    interval: Math.max(60, num("i", 120)) * 1000, // le rang ne change qu'après une game : 2 min suffisent
     demo: get("demo", "0") === "1"
   };
 
@@ -309,6 +309,22 @@
   const remember = (d) => { try { localStorage.setItem(cacheKey, JSON.stringify(d)); } catch (e) {} };
   let failures = 0;
 
+  // Région déjà trouvée : évite l'appel d'auto-détection à chaque rafraîchissement
+  const regionKey = `vo2-region-${cfg.name}#${cfg.tag}`.toLowerCase();
+  let region = cfg.region;
+  if (region === "auto") { try { region = localStorage.getItem(regionKey) || "auto"; } catch (e) {} }
+
+  // L'historique n'est utile que pour V/D, les pastilles et les stats « aujourd'hui / 24h »
+  const needsHistory = has("wl") || has("last") || (has("session") && cfg.period !== "stream");
+
+  async function fetchPlayer(withHistory) {
+    const url = `${cfg.api}?name=${encodeURIComponent(cfg.name)}&tag=${encodeURIComponent(cfg.tag)}&region=${encodeURIComponent(region)}&history=${withHistory ? 1 : 0}`;
+    const r = await fetch(url, { cache: "no-store" });
+    const d = await r.json().catch(() => null);
+    if (!d || !d.ok) { const e = new Error((d && d.error) || `HTTP ${r.status}`); e.status = r.status; throw e; }
+    return d;
+  }
+
   function demoData() {
     const now = Date.now();
     const ch = [21, -17, 24, 19, -14, 22, -18, 16];
@@ -323,10 +339,15 @@
     if (cfg.demo) { render(demoData()); return; }
     if (!cfg.name || !cfg.tag) { renderMessage(T.invalid); return; }
     try {
-      const url = `${cfg.api}?name=${encodeURIComponent(cfg.name)}&tag=${encodeURIComponent(cfg.tag)}&region=${encodeURIComponent(cfg.region)}`;
-      const r = await fetch(url, { cache: "no-store" });
-      const d = await r.json().catch(() => null);
-      if (!d || !d.ok) throw new Error((d && d.error) || `HTTP ${r.status}`);
+      let d = await fetchPlayer(false);
+      if (d.region && d.region !== region) { region = d.region; try { localStorage.setItem(regionKey, region); } catch (e) {} }
+      // Historique : seulement au démarrage ou quand une nouvelle game est passée (elo changé)
+      const newGame = !last || last.elo !== d.elo || last.tier !== d.tier;
+      if (needsHistory && (newGame || !Array.isArray(last && last.history))) {
+        try { d = await fetchPlayer(true); } catch (e) { d.history = last && last.history; }
+      } else {
+        d.history = last && Array.isArray(last.history) ? last.history : [];
+      }
       const tierChanged = last && last.tier !== d.tier;
       last = d;
       failures = 0;
@@ -339,8 +360,8 @@
       console.error("[Valorant overlay]", e);
       failures++;
       if (last) render(last); else renderMessage(e.message || T.err);
-      // Nouvel essai rapide après une erreur (15s, 30s, puis rythme normal)
-      if (failures <= 2) setTimeout(update, 15000 * failures);
+      // Nouvel essai rapide après une panne (15s, 30s), mais jamais si l'API dit « trop de requêtes »
+      if (e.status !== 429 && failures <= 2) setTimeout(update, 15000 * failures);
     }
   }
 
