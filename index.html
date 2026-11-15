@@ -121,6 +121,8 @@
   .presets button { display: flex; align-items: center; gap: 9px; text-align: left; padding: 8px 12px 8px 8px; }
   .presets i { width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; box-shadow: inset 0 0 0 2px rgba(255,255,255,.7); }
 
+  .urlpaste { display: flex; gap: 8px; }
+  .urlpaste input { font: 600 12px ui-monospace, Menlo, monospace !important; }
   .hint { color: var(--mute); font-size: 12px; line-height: 1.45; }
   .status { font-size: 12px; font-weight: 700; min-height: 16px; color: var(--mute); }
   .status.ok { color: #1f9d55; } .status.err { color: #EB0400; }
@@ -207,6 +209,9 @@
 
   // ---------- Définition des réglages (clé = paramètre d'URL) ----------
   const SECTIONS = [
+    { title: "Modifier un widget existant", fields: [
+      { k: "_import", type: "import" }
+    ]},
     { title: "Joueur", open: true, fields: [
       { k: "n_t", type: "riotid", label: "Riot ID", d: "" },
       { k: "r", type: "select", label: "Région", d: "auto", opts: { auto: "Auto-détection", eu: "Europe", na: "Amérique du Nord", ap: "Asie-Pacifique", kr: "Corée", latam: "LATAM", br: "Brésil" } },
@@ -214,9 +219,9 @@
     ]},
     { title: "Disposition", open: true, fields: [
       { k: "l", type: "seg", label: "Style", d: "pill", opts: { pill: "Pilule", card: "Carte", banner: "Bannière", minimal: "Minimal" } },
-      { k: "co", type: "select", label: "Pastilles d'infos", d: "in", opts: { in: "Dans le badge", out: "À l'extérieur" } },
-      { k: "cp", type: "select", label: "Position des pastilles", d: "right", opts: { right: "À droite", below: "En dessous" } },
-      { k: "cl", type: "select", label: "Agencement des pastilles", d: "row", opts: { row: "Sur une ligne", grid: "Sur 2 colonnes", col: "En colonne" } },
+      { k: "co", type: "seg", label: "Pastilles d'infos", d: "in", opts: { in: "Dans le badge", out: "À l'extérieur" } },
+      { k: "cp", type: "seg", label: "Position des pastilles", d: "right", opts: { right: "À droite", below: "En dessous" } },
+      { k: "cl", type: "seg", label: "Empilement des pastilles", d: "row", opts: { row: "↔ Horizontal", col: "↕ Vertical", grid: "▦ Grille" } },
       { k: "preset", type: "presets", label: "Thèmes rapides" }
     ]},
     { title: "Ce qui s'affiche", open: true, fields: [
@@ -320,6 +325,26 @@
 
   function field(f) {
     const val = state[f.k];
+    if (f.type === "import") {
+      const w = h("div", { className: "stack" });
+      w.appendChild(h("div", { className: "hint" }, "Colle ici le lien que tu as mis dans OBS : tous tes réglages se rechargent et tu peux les modifier."));
+      const row = h("div", { className: "urlpaste" });
+      const inp = h("input", { type: "text", placeholder: "https://…/overlay.html?n=…" });
+      const btn = h("button", { type: "button", className: "btn" }, "Charger");
+      const msg = h("div", { className: "status" });
+      const go = () => {
+        const ok = importLink(inp.value);
+        msg.className = "status " + (ok ? "ok" : "err");
+        msg.textContent = ok ? "✓ Réglages rechargés : modifie-les puis recopie le nouveau lien" : "Ce lien ne ressemble pas à un lien d'overlay";
+        if (ok) inp.value = "";
+      };
+      btn.addEventListener("click", go);
+      inp.addEventListener("keydown", (e) => { if (e.key === "Enter") go(); });
+      inp.addEventListener("paste", () => setTimeout(go, 0));
+      row.appendChild(inp); row.appendChild(btn);
+      w.appendChild(row); w.appendChild(msg);
+      return w;
+    }
     if (f.type === "riotid") {
       const w = h("div", { className: "stack" });
       w.appendChild(h("label", { htmlFor: "riot" }, "Riot ID (Pseudo#Tag)"));
@@ -334,6 +359,7 @@
       w.appendChild(lblrow(f));
       const seg = h("div", { className: "seg" });
       seg.dataset.seg = f.k;
+      seg.style.gridTemplateColumns = `repeat(${Object.keys(f.opts).length}, 1fr)`;
       Object.entries(f.opts).forEach(([v, t]) => {
         const b = h("button", { type: "button", className: v === val ? "on" : "" }, t);
         b.dataset.v = v;
@@ -485,7 +511,7 @@
     status.className = "status" + (state.n_t && !valid ? " err" : "");
     status.textContent = state.n_t && !valid ? "Format attendu : Pseudo#Tag" : valid && state.demo !== "1" ? "✓ Aperçu avec tes vraies données" : "Aperçu avec des données de démo";
 
-    const live = buildParams(false).toString();
+    const live = buildParams(false).toString().replace(/%2C/gi, ",");
     urlBox.value = base + (live ? "?" + live : "");
     document.getElementById("size").textContent = SIZES[state.l] || SIZES.pill;
 
@@ -522,7 +548,30 @@
     document.getElementById("stage").className = "stage " + b.dataset.bg;
   }));
 
-  update();
+  // ---------- Import d'un lien existant ----------
+  function applyParams(q) {
+    const known = ["n", "t", "s", "an"].concat(Object.keys(defaults));
+    if (![...q.keys()].some((k) => known.includes(k))) return false;
+    Object.keys(defaults).forEach((k) => {
+      if (k === "demo") return;
+      if (k.startsWith("s:")) { const list = (q.get("s") || "icon,rank,rr,bar,session").split(","); state[k] = list.includes(k.slice(2)) ? "1" : "0"; return; }
+      if (k.startsWith("an:")) { const list = (q.get("an") || "float,pulse,flash").split(","); state[k] = list.includes(k.slice(3)) ? "1" : "0"; return; }
+      state[k] = q.has(k) ? q.get(k) : defaults[k];
+    });
+    if (q.get("n") || q.get("t")) state.n_t = (q.get("n") || "") + "#" + (q.get("t") || "");
+    state.demo = "0";
+    const riot = document.getElementById("riot"); if (riot) riot.value = state.n_t;
+    syncInputs(); update();
+    return true;
+  }
+  function importLink(text) {
+    try {
+      const u = new URL(String(text).trim(), location.href);
+      return applyParams(u.searchParams);
+    } catch (e) { return false; }
+  }
+  // La page ouverte avec des réglages dans l'adresse (?n=…&t=…) les charge directement
+  if (!applyParams(new URLSearchParams(location.search))) update();
 })();
 </script>
 </body>
