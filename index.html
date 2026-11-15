@@ -94,6 +94,9 @@
   #riot { font-size: 16px; padding: 13px 14px; }
   input[type=color] { width: 40px; height: 32px; border: 1.5px solid var(--line); border-radius: 10px; background: #fff; padding: 3px; cursor: pointer; }
   input[type=range] { width: 140px; accent-color: var(--violet); }
+  .colorwrap { display: flex; align-items: center; gap: 6px; }
+  input.hex { width: 96px; padding: 7px 9px; font: 700 12px ui-monospace, Menlo, monospace; text-transform: uppercase; color: var(--deep); }
+  input.hex.bad { border-color: #EB0400; box-shadow: 0 0 0 3px rgba(235,4,0,.12); }
   .rangewrap { display: flex; align-items: center; gap: 8px; }
   .rangewrap output { width: 44px; text-align: right; color: var(--deep); font-weight: 800; font-variant-numeric: tabular-nums; font-size: 12px; }
 
@@ -377,9 +380,28 @@
       ctrl.style.width = "auto"; ctrl.style.minWidth = "150px"; ctrl.style.maxWidth = "230px";
       ctrl.addEventListener("change", () => { state[f.k] = ctrl.value; update(); });
     } else if (f.type === "color") {
-      ctrl = h("input", { type: "color", value: "#" + val.slice(0, 6) });
-      ctrl.dataset.k = f.k;
-      ctrl.addEventListener("input", () => { state[f.k] = ctrl.value.slice(1) + (val.length > 6 ? val.slice(6) : ""); update(); });
+      ctrl = h("div", { className: "colorwrap" });
+      const pick = h("input", { type: "color", value: "#" + val.slice(0, 6), title: "Choisir une couleur" });
+      const hex = h("input", { type: "text", className: "hex", value: "#" + val, maxLength: 9, spellcheck: false, title: "Code hexa (#RRGGBB ou #RRGGBBAA)" });
+      pick.dataset.k = f.k; hex.dataset.hex = f.k;
+      pick.addEventListener("input", () => {
+        const cur = state[f.k] || "";
+        state[f.k] = pick.value.slice(1) + (cur.length > 6 ? cur.slice(6) : "");
+        hex.value = "#" + state[f.k]; hex.classList.remove("bad");
+        update();
+      });
+      hex.addEventListener("input", () => {
+        let v = hex.value.trim().replace(/^#/, "");
+        if (/^[0-9a-f]{3}$/i.test(v)) v = v.split("").map((c) => c + c).join("");
+        const ok = /^([0-9a-f]{6}|[0-9a-f]{8})$/i.test(v);
+        hex.classList.toggle("bad", !ok && v.length > 0);
+        if (!ok) return;
+        state[f.k] = v.toLowerCase();
+        pick.value = "#" + state[f.k].slice(0, 6);
+        update();
+      });
+      hex.addEventListener("blur", () => { hex.value = "#" + state[f.k]; hex.classList.remove("bad"); });
+      ctrl.appendChild(pick); ctrl.appendChild(hex);
     } else if (f.type === "range") {
       ctrl = h("div", { className: "rangewrap" });
       const inp = h("input", { type: "range", min: f.min, max: f.max, step: f.step || 1, value: val });
@@ -406,6 +428,7 @@
       else el.value = v;
       if (el.type === "range") el.nextElementSibling.textContent = v + el.dataset.unit;
     });
+    form.querySelectorAll("[data-hex]").forEach((el) => { if (state[el.dataset.hex] != null) { el.value = "#" + state[el.dataset.hex]; el.classList.remove("bad"); } });
     form.querySelectorAll("[data-seg]").forEach((seg) => {
       seg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === state[seg.dataset.seg]));
     });
