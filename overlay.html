@@ -220,7 +220,7 @@
     p.rr = has("rr") && d.rr != null ? `<div class="rr">${d.rr} RR</div>` : "";
     p.bar = has("bar") ? `<div class="bar"><i style="width:${pct}%"></i></div>` : "";
     const chips = [];
-    if (has("session")) chips.push(`<span class="chip ${s.gained > 0 ? "pos" : s.gained < 0 ? "neg" : ""}">${signed(s.gained)} RR</span>`);
+    if (has("session")) chips.push(`<span class="chip ${s.gained > 0 ? "pos" : s.gained < 0 ? "neg" : ""}">${s.gained > 0 ? "▲ +" + s.gained : s.gained < 0 ? "▼ " + s.gained : "±0"} RR</span>`);
     if (has("wl")) chips.push(`<span class="chip"><b class="pos">${s.wins}${T.w}</b> · <b class="neg">${s.losses}${T.l}</b></span>`);
     if (has("lb") && d.leaderboard) chips.push(`<span class="chip">#${d.leaderboard}</span>`);
     if (has("peak") && d.peak && d.peak.tier) chips.push(`<span class="chip">${T.peak} <b>${esc(rankLabel(d.peak.rank))}</b></span>`);
