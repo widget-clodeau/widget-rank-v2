@@ -74,7 +74,14 @@
   details[open] summary::after { transform: rotate(45deg); }
   .sec { padding: 2px 14px 16px; display: grid; gap: 12px; }
 
-  .row { display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px; }
+  .row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; gap: 8px; }
+  .lblrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .reset { visibility: hidden; opacity: 0; width: 26px; height: 26px; border-radius: 50%; border: 0; background: var(--soft2); color: var(--deep); font: 800 14px 'Archivo', sans-serif; cursor: pointer; transition: opacity .2s, transform .25s cubic-bezier(.34,1.56,.64,1); }
+  .reset.show { visibility: visible; opacity: 1; }
+  .reset:hover { transform: rotate(-90deg); background: var(--accent); }
+  .resetall { margin-left: auto; background: #fff; color: var(--deep); border: 0; border-radius: 99px; padding: 6px 12px; font: 800 12px 'Archivo', sans-serif; cursor: pointer; box-shadow: 0 2px 8px rgba(76,29,149,.12); transition: transform .2s cubic-bezier(.34,1.56,.64,1), background .15s; }
+  .resetall:hover { transform: translateY(-1px); }
+  .resetall.confirm { background: #EB0400; color: #fff; }
   .row label, .stack label { color: var(--ink2); font-size: 13px; font-weight: 600; }
   .stack { display: grid; gap: 7px; }
 
@@ -157,7 +164,7 @@
 <main>
   <div class="left">
     <div class="win">
-      <div class="bar"><div class="dots"><i></i><i></i><i></i></div><span class="title">réglages</span></div>
+      <div class="bar"><div class="dots"><i></i><i></i><i></i></div><span class="title">réglages</span><button class="resetall" id="resetAll" type="button" title="Remet tous les réglages par défaut (garde ton pseudo et ta région)">↺ Tout réinitialiser</button></div>
       <div class="scroll" id="form"></div>
     </div>
   </div>
@@ -226,7 +233,11 @@
       { k: "ga", type: "range", label: "Angle du dégradé", d: 135, min: 0, max: 360, step: 5, unit: "°" },
       { k: "o", type: "range", label: "Opacité du fond", d: 0.85, min: 0, max: 1, step: 0.05 },
       { k: "br", type: "range", label: "Arrondi", d: 50, min: 0, max: 60, unit: "px" },
-      { k: "bd", type: "toggle", label: "Bordure", d: "1" },
+      { k: "bd", type: "toggle", label: "Contour", d: "1" },
+      { k: "bdc", type: "color", label: "Couleur du contour", d: "ffffff", dep: "bd" },
+      { k: "bdw", type: "range", label: "Épaisseur du contour", d: 2, min: 1, max: 8, unit: "px", dep: "bd" },
+      { k: "bdo", type: "range", label: "Opacité du contour", d: 0.3, min: 0.05, max: 1, step: 0.05, dep: "bd" },
+      { k: "bds", type: "select", label: "Style du contour", d: "solid", dep: "bd", opts: { solid: "Plein", dashed: "Tirets", dotted: "Pointillés", double: "Double" } },
       { k: "sh", type: "toggle", label: "Ombre portée", d: "1" },
       { k: "ac", type: "color", label: "Couleur d'accent (barre)", d: "ffffff" },
       { k: "wc", type: "color", label: "Couleur victoire / gain", d: "4ade80" },
@@ -253,15 +264,11 @@
       { k: "an:float", type: "toggle", label: "Flottement", d: "1" },
       { k: "an:pulse", type: "toggle", label: "Pulsation de l'icône", d: "1" },
       { k: "an:flash", type: "toggle", label: "Flash quand le rang change", d: "1" }
-    ]},
-    { title: "Avancé", fields: [
-      { k: "i", type: "number", label: "Rafraîchissement (secondes, min 30)", d: 60, min: 30 },
-      { k: "api", type: "text", label: "URL de l'API (laisser vide par défaut)", d: "", ph: "/api/player" }
     ]}
   ];
 
   const PRESETS = [
-    { name: "Violet (v1)", sw: "linear-gradient(135deg,#8a2be2,#da70d6)", v: { c1: "8a2be2", c2: "da70d6", ac: "ffffff", rc: "ffffff", rrc: "ffffffcc", bg: "1", bd: "1", sh: "1", br: 50, o: 0.85, f: "Montserrat" } },
+    { name: "Violet (v1)", sw: "linear-gradient(135deg,#8a2be2,#da70d6)", v: { c1: "8a2be2", c2: "da70d6", ac: "ffffff", rc: "ffffff", rrc: "ffffffcc", bg: "1", bd: "1", bdc: "ffffff", bdo: "0.3", bdw: "2", bds: "solid", sh: "1", br: 50, o: 0.85, f: "Montserrat" } },
     { name: "Valorant", sw: "linear-gradient(135deg,#ff4655,#0f1923)", v: { c1: "ff4655", c2: "0f1923", ac: "ff4655", rc: "ece8e1", rrc: "ece8e1cc", bg: "1", bd: "0", sh: "1", br: 4, o: 0.95, f: "Oswald" } },
     { name: "Nuit", sw: "linear-gradient(135deg,#111827,#1f2937)", v: { c1: "111827", c2: "1f2937", ac: "a78bfa", rc: "ffffff", rrc: "ffffffaa", bg: "1", bd: "1", sh: "0", br: 14, o: 0.9, f: "Inter" } },
     { name: "Lavande", sw: "linear-gradient(135deg,#e9ddff,#c4b0ff)", v: { c1: "e9ddff", c2: "c4b0ff", ac: "7c3aed", rc: "2a1650", rrc: "2a1650cc", bg: "1", bd: "1", sh: "1", br: 18, o: 0.95, f: "Archivo" } },
@@ -276,6 +283,7 @@
 
   // Restaure depuis l'URL du configurateur (?n=..&t=.. etc.) ou le stockage local
   try { Object.assign(state, JSON.parse(localStorage.getItem("vo2-config") || "{}")); } catch (e) {}
+  delete state.api; delete state.i; // anciens réglages « Avancé » retirés de la page
   const save = () => { try { localStorage.setItem("vo2-config", JSON.stringify(state)); } catch (e) {} };
 
   // ---------- Construction du formulaire ----------
@@ -291,6 +299,19 @@
     form.appendChild(det);
   });
 
+  function resetBtn(f) {
+    const b = h("button", { type: "button", className: "reset", title: "Revenir à la valeur par défaut" }, "↺");
+    b.dataset.reset = f.k;
+    b.addEventListener("click", () => { state[f.k] = String(f.d); syncInputs(); update(); });
+    return b;
+  }
+  function lblrow(f) {
+    const r = h("div", { className: "lblrow" });
+    r.appendChild(h("label", {}, f.label));
+    r.appendChild(resetBtn(f));
+    return r;
+  }
+
   function field(f) {
     const val = state[f.k];
     if (f.type === "riotid") {
@@ -304,10 +325,12 @@
     }
     if (f.type === "seg") {
       const w = h("div", { className: "stack" });
-      w.appendChild(h("label", {}, f.label));
+      w.appendChild(lblrow(f));
       const seg = h("div", { className: "seg" });
+      seg.dataset.seg = f.k;
       Object.entries(f.opts).forEach(([v, t]) => {
         const b = h("button", { type: "button", className: v === val ? "on" : "" }, t);
+        b.dataset.v = v;
         b.addEventListener("click", () => { state[f.k] = v; seg.querySelectorAll("button").forEach((x) => x.classList.toggle("on", x === b)); update(); });
         seg.appendChild(b);
       });
@@ -328,7 +351,7 @@
     }
     if (f.type === "text" || f.type === "font") {
       const w = h("div", { className: "stack" });
-      w.appendChild(h("label", {}, f.label));
+      w.appendChild(lblrow(f));
       const inp = h("input", { type: "text", value: val, placeholder: f.ph || "" });
       inp.dataset.k = f.k;
       inp.addEventListener("input", () => { state[f.k] = inp.value.trim(); update(); });
@@ -338,6 +361,7 @@
     }
 
     const row = h("div", { className: "row" });
+    if (f.dep) row.dataset.dep = f.dep;
     row.appendChild(h("label", {}, f.label));
     let ctrl;
     if (f.type === "toggle") {
@@ -350,7 +374,7 @@
       ctrl = h("select");
       ctrl.dataset.k = f.k;
       Object.entries(f.opts).forEach(([v, t]) => ctrl.appendChild(h("option", { value: v, selected: v === val }, t)));
-      ctrl.style.width = "190px";
+      ctrl.style.width = "auto"; ctrl.style.minWidth = "150px"; ctrl.style.maxWidth = "230px";
       ctrl.addEventListener("change", () => { state[f.k] = ctrl.value; update(); });
     } else if (f.type === "color") {
       ctrl = h("input", { type: "color", value: "#" + val.slice(0, 6) });
@@ -368,6 +392,7 @@
       ctrl.dataset.k = f.k;
       ctrl.addEventListener("input", () => { state[f.k] = ctrl.value; update(); });
     }
+    row.appendChild(f.local ? h("span") : resetBtn(f));
     row.appendChild(ctrl);
     return row;
   }
@@ -381,6 +406,15 @@
       else el.value = v;
       if (el.type === "range") el.nextElementSibling.textContent = v + el.dataset.unit;
     });
+    form.querySelectorAll("[data-seg]").forEach((seg) => {
+      seg.querySelectorAll("button").forEach((b) => b.classList.toggle("on", b.dataset.v === state[seg.dataset.seg]));
+    });
+  }
+  function updateDeps() {
+    form.querySelectorAll("[data-dep]").forEach((el) => { el.style.display = state[el.dataset.dep] === "1" ? "" : "none"; });
+  }
+  function updateResets() {
+    form.querySelectorAll("[data-reset]").forEach((b) => b.classList.toggle("show", state[b.dataset.reset] !== defaults[b.dataset.reset]));
   }
 
   // ---------- Génération de l'URL ----------
@@ -418,6 +452,8 @@
   let timer;
   function update() {
     save();
+    updateResets();
+    updateDeps();
     const [name, tag] = String(state.n_t || "").split("#");
     const valid = !!(name && name.trim() && tag && tag.trim());
     status.className = "status" + (state.n_t && !valid ? " err" : "");
@@ -437,6 +473,22 @@
     try { await navigator.clipboard.writeText(urlBox.value); }
     catch (err) { urlBox.select(); document.execCommand("copy"); }
     b.textContent = "Copié ✓"; setTimeout(() => (b.textContent = "Copier le lien"), 1500);
+  });
+  const resetAll = document.getElementById("resetAll");
+  let confirmTimer;
+  resetAll.addEventListener("click", () => {
+    if (!resetAll.classList.contains("confirm")) {
+      resetAll.classList.add("confirm");
+      resetAll.textContent = "Sûr ? Clique encore";
+      confirmTimer = setTimeout(() => { resetAll.classList.remove("confirm"); resetAll.textContent = "↺ Tout réinitialiser"; }, 3000);
+      return;
+    }
+    clearTimeout(confirmTimer);
+    Object.keys(defaults).forEach((k) => { if (k !== "r" && k !== "demo") state[k] = defaults[k]; });
+    syncInputs(); update();
+    resetAll.classList.remove("confirm");
+    resetAll.textContent = "✓ Réinitialisé";
+    setTimeout(() => (resetAll.textContent = "↺ Tout réinitialiser"), 1500);
   });
   document.getElementById("open").addEventListener("click", () => window.open(urlBox.value, "_blank"));
   document.querySelectorAll("#stageBg button").forEach((b) => b.addEventListener("click", () => {
