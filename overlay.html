@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<title>Valorant Rank Overlay</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { background: transparent; overflow: hidden; }
+  body { padding: 30px; }
+
+  #root { font-family: var(--font), 'Montserrat', sans-serif; display: inline-block; transform-origin: top left; transform: scale(var(--scale)); }
+  #root.align-right { float: right; transform-origin: top right; }
+
+  .box {
+    position: relative;
+    display: inline-flex; align-items: center; gap: var(--gap);
+    padding: var(--padv) var(--padh);
+    background: var(--bg);
+    border-radius: var(--radius);
+    color: var(--rank-color);
+  }
+  .box.border { border: 2px solid rgba(255,255,255,.3); }
+  .box.shadow { box-shadow: 0 8px 32px var(--shadow-color), inset 0 1px 0 rgba(255,255,255,.3); }
+  .anim-float .box { animation: float 3s ease-in-out infinite; }
+  @keyframes float { 0%,100% { transform: translateY(0) } 50% { transform: translateY(-4px) } }
+
+  .icon { display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .icon img { width: var(--icon); height: var(--icon); object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,.25)); }
+  .anim-pulse .icon { animation: pulse 2s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { transform: scale(1) } 50% { transform: scale(1.1) } }
+
+  .txt { display: flex; flex-direction: column; justify-content: center; min-width: 0; }
+  .label { font-size: var(--rr-size); font-weight: 700; color: var(--rr-color); text-transform: uppercase; letter-spacing: 1px; line-height: 1.2; padding-bottom: 3px; }
+  .rank { font-size: var(--rank-size); font-weight: 800; line-height: 1; white-space: nowrap; text-shadow: 0 2px 12px rgba(0,0,0,.4); }
+  .rr { font-size: var(--rr-size); font-weight: 700; color: var(--rr-color); text-transform: uppercase; letter-spacing: 1px; white-space: nowrap; }
+
+  .bar { height: 6px; border-radius: 6px; background: rgba(255,255,255,.18); overflow: hidden; }
+  .bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 6px; transition: width .8s ease; }
+
+  .stats { display: flex; gap: 8px; flex-wrap: nowrap; }
+  .chip { font-size: var(--rr-size); font-weight: 800; padding: 4px 9px; border-radius: 99px; background: rgba(0,0,0,.22); white-space: nowrap; color: var(--rr-color); letter-spacing: .5px; }
+  .chip b { color: var(--rank-color); }
+  .pos { color: var(--win) !important; } .neg { color: var(--loss) !important; }
+
+  .dots { display: flex; gap: 4px; }
+  .dots span { width: 9px; height: 9px; border-radius: 50%; background: rgba(255,255,255,.3); }
+  .dots .w { background: var(--win); } .dots .l { background: var(--loss); }
+
+  /* ---- Layout : pill (v1) ---- */
+  .l-pill .extra { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .l-pill .rowline { display: flex; align-items: baseline; gap: 8px; }
+  .l-pill .bar { width: 100%; margin-top: 6px; }
+
+  /* ---- Layout : card ---- */
+  .l-card .box { flex-direction: column; align-items: stretch; gap: 12px; min-width: 260px; }
+  .l-card .head { display: flex; align-items: center; gap: var(--gap); }
+  .l-card .rowline { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-top: 4px; }
+  .l-card .foot { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+
+  /* ---- Layout : minimal ---- */
+  .l-minimal .box { gap: 10px; }
+  .l-minimal .sep { opacity: .5; font-weight: 700; font-size: var(--rr-size); }
+  .l-minimal .rr, .l-minimal .chip { font-size: calc(var(--rank-size) * .55); }
+  .l-minimal .chip { background: none; padding: 0; }
+
+  /* ---- Layout : banner (style Valorant) ---- */
+  .l-banner .box { border-radius: 0; clip-path: polygon(14px 0, 100% 0, calc(100% - 14px) 100%, 0 100%); padding-left: calc(var(--padh) + 10px); padding-right: calc(var(--padh) + 10px); border: none !important; }
+  .l-banner .box::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 6px; background: var(--accent); transform: skewX(-14deg); transform-origin: bottom left; }
+  .l-banner .rank { letter-spacing: 2px; }
+  .l-banner .vsep { width: 2px; align-self: stretch; background: rgba(255,255,255,.25); }
+  .l-banner .bar { width: 120px; margin-top: 6px; }
+
+  /* Animations d'événement */
+  .flash .box { animation: flash 1.2s ease; }
+  @keyframes flash { 0% { filter: brightness(1) } 30% { filter: brightness(1.8) drop-shadow(0 0 18px var(--accent)) } 100% { filter: brightness(1) } }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+(function () {
+  "use strict";
+
+  // ---------- Paramètres URL ----------
+  const P = new URLSearchParams(location.search);
+  const get = (k, d) => (P.has(k) && P.get(k) !== "" ? P.get(k) : d);
+  const num = (k, d) => { const v = Number(get(k, d)); return isFinite(v) ? v : d; };
+  const color = (v) => /^[0-9a-f]{3,8}$/i.test(v) ? "#" + v : v;
+
+  const cfg = {
+    name: get("n", ""), tag: get("t", ""), region: get("r", "auto"),
+    api: get("api", "/api/player"),
+    layout: get("l", "pill"),
+    show: new Set(get("s", "icon,rank,rr,bar,session").split(",").filter(Boolean)),
+    c1: color(get("c1", "8a2be2")), c2: color(get("c2", "da70d6")),
+    angle: num("ga", 135), opacity: num("o", 0.85), bg: get("bg", "1") !== "0",
+    radius: num("br", 50), border: get("bd", "1") !== "0", shadow: get("sh", "1") !== "0",
+    font: get("f", "Montserrat"),
+    rankColor: color(get("rc", "ffffff")), rrColor: color(get("rrc", "ffffffcc")),
+    accent: color(get("ac", "ffffff")), win: color(get("wc", "4ade80")), loss: color(get("lc", "ff5a6e")),
+    rankSize: num("rs", 26), rrSize: num("rrs", 11), icon: num("is", 45),
+    gap: num("gap", 15), padv: num("pv", 12), padh: num("ph", 25),
+    scale: num("sc", 100) / 100, align: get("al", "left"),
+    anim: new Set(get("an", "float,pulse,flash").split(",").filter(Boolean)),
+    lang: get("lang", "fr"), rankLang: get("rn", "en"),
+    period: get("p", "stream"),
+    label: get("lbl", ""),
+    interval: Math.max(30, num("i", 60)) * 1000,
+    demo: get("demo", "0") === "1"
+  };
+
+  const T = {
+    fr: { loading: "Chargement…", session: "Session", w: "V", l: "D", peak: "Pic", err: "Erreur", invalid: "Pseudo#Tag invalide", today: "Aujourd'hui", h24: "24h" },
+    en: { loading: "Loading…", session: "Session", w: "W", l: "L", peak: "Peak", err: "Error", invalid: "Invalid Name#Tag", today: "Today", h24: "24h" }
+  }[cfg.lang] || {};
+
+  const RANK_FR = { IRON: "FER", BRONZE: "BRONZE", SILVER: "ARGENT", GOLD: "OR", PLATINUM: "PLATINE", DIAMOND: "DIAMANT", ASCENDANT: "ASCENDANT", IMMORTAL: "IMMORTEL", RADIANT: "RADIANT", UNRATED: "NON CLASSÉ" };
+  const rankLabel = (r) => {
+    r = String(r || "").toUpperCase();
+    if (cfg.rankLang !== "fr") return r;
+    const [base, div] = r.split(" ");
+    return (RANK_FR[base] || base) + (div ? " " + div : "");
+  };
+
+  // Icônes : valorant-api.com, repli sur le wiki
+  const ICON_SET = "03621f52-342b-cf4e-4f86-9350a49c6d04";
+  const WIKI = "https://static.wikia.nocookie.net/valorant/images/";
+  const WIKI_ICONS = { 3: "7/7c/Iron_1_Rank.png", 4: "b/bf/Iron_2_Rank.png", 5: "7/79/Iron_3_Rank.png", 6: "b/bd/Bronze_1_Rank.png", 7: "c/c7/Bronze_2_Rank.png", 8: "a/ae/Bronze_3_Rank.png", 9: "8/8a/Silver_1_Rank.png", 10: "e/e9/Silver_2_Rank.png", 11: "d/d7/Silver_3_Rank.png", 12: "6/65/Gold_1_Rank.png", 13: "0/02/Gold_2_Rank.png", 14: "2/27/Gold_3_Rank.png", 15: "9/96/Platinum_1_Rank.png", 16: "5/5a/Platinum_2_Rank.png", 17: "1/1b/Platinum_3_Rank.png", 18: "a/ae/Diamond_1_Rank.png", 19: "6/6a/Diamond_2_Rank.png", 20: "0/01/Diamond_3_Rank.png", 21: "e/e5/Ascendant_1_Rank.png", 22: "1/1e/Ascendant_2_Rank.png", 23: "5/53/Ascendant_3_Rank.png", 24: "a/a8/Immortal_1_Rank.png", 25: "2/21/Immortal_2_Rank.png", 26: "0/0b/Immortal_3_Rank.png", 27: "1/1a/Radiant_Rank.png" };
+  const wikiFor = (tier) => WIKI_ICONS[tier] ? WIKI + WIKI_ICONS[tier] + "/revision/latest" : "";
+  window.__iconFail = function (img, tier) {
+    const step = Number(img.dataset.step || 0);
+    const next = [iconFor(tier), wikiFor(tier)][step];
+    img.dataset.step = step + 1;
+    if (next && next !== img.src) img.src = next; else img.parentNode.style.display = "none";
+  };
+  const iconFor = (tier) => tier >= 3 ? `https://media.valorant-api.com/competitivetiers/${ICON_SET}/${tier}/largeicon.png` : `https://media.valorant-api.com/competitivetiers/${ICON_SET}/0/largeicon.png`;
+
+  // ---------- Style ----------
+  const hexA = (hex, a) => {
+    const h = String(hex).replace("#", "");
+    if (!/^[0-9a-f]{6}$/i.test(h)) return hex;
+    return `rgba(${parseInt(h.slice(0, 2), 16)},${parseInt(h.slice(2, 4), 16)},${parseInt(h.slice(4, 6), 16)},${a})`;
+  };
+
+  if (cfg.font) {
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(cfg.font).replace(/%20/g, "+")}:wght@400;700;800&display=swap`;
+    document.head.appendChild(link);
+  }
+
+  const root = document.getElementById("root");
+  const css = {
+    "--font": `'${cfg.font}'`,
+    "--bg": cfg.bg ? `linear-gradient(${cfg.angle}deg, ${hexA(cfg.c1, cfg.opacity)} 0%, ${hexA(cfg.c2, cfg.opacity)} 100%)` : "transparent",
+    "--shadow-color": hexA(cfg.c1, 0.4),
+    "--radius": cfg.radius + "px", "--gap": cfg.gap + "px",
+    "--padv": cfg.bg ? cfg.padv + "px" : "0px", "--padh": cfg.bg ? cfg.padh + "px" : "0px",
+    "--rank-color": cfg.rankColor, "--rr-color": cfg.rrColor, "--accent": cfg.accent,
+    "--win": cfg.win, "--loss": cfg.loss,
+    "--rank-size": cfg.rankSize + "px", "--rr-size": cfg.rrSize + "px", "--icon": cfg.icon + "px",
+    "--scale": cfg.scale
+  };
+  for (const k in css) root.style.setProperty(k, css[k]);
+  root.className = `l-${cfg.layout}` + (cfg.align === "right" ? " align-right" : "");
+  if (cfg.anim.has("float")) root.classList.add("anim-float");
+  if (cfg.anim.has("pulse")) root.classList.add("anim-pulse");
+
+  // ---------- Session ----------
+  const loadTime = Date.now();
+  const baseKey = `vo2-base-${cfg.name}#${cfg.tag}`.toLowerCase();
+  function baseline(elo) {
+    try {
+      const saved = JSON.parse(localStorage.getItem(baseKey) || "null");
+      if (saved && Date.now() - saved.t < 8 * 3600e3) return saved; // garde la session 8h (refresh OBS)
+      const b = { elo, t: Date.now() };
+      localStorage.setItem(baseKey, JSON.stringify(b));
+      return b;
+    } catch (e) { return { elo, t: loadTime }; }
+  }
+
+  function sessionStats(d) {
+    const hist = Array.isArray(d.history) ? d.history : [];
+    let since;
+    if (cfg.demo) since = 0;
+    else if (cfg.period === "today") { const m = new Date(); m.setHours(0, 0, 0, 0); since = m.getTime(); }
+    else if (cfg.period === "24h") since = Date.now() - 24 * 3600e3;
+    else since = baseline(d.elo).t;
+
+    const games = hist.filter((h) => h.date >= since);
+    let gained = games.reduce((s, h) => s + (h.change || 0), 0);
+    if (!cfg.demo && cfg.period === "stream" && d.elo != null) {
+      const b = baseline(d.elo);
+      if (b.elo != null) gained = d.elo - b.elo;
+    }
+    return {
+      gained,
+      wins: games.filter((h) => h.change > 0).length,
+      losses: games.filter((h) => h.change < 0).length,
+      last: hist.slice(0, 5).map((h) => (h.change > 0 ? "w" : h.change < 0 ? "l" : "d"))
+    };
+  }
+
+  // ---------- Rendu ----------
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const has = (k) => cfg.show.has(k);
+  const signed = (n) => (n > 0 ? "+" : "") + n;
+
+  function parts(d) {
+    const s = sessionStats(d);
+    const high = d.tier >= 24; // Immortal+ : RR non plafonnés
+    const pct = high ? 100 : Math.max(0, Math.min(100, d.rr || 0));
+    const p = {};
+    p.icon = has("icon") ? `<div class="icon"><img src="${esc(d.icon || iconFor(d.tier))}" alt="" onerror="__iconFail(this, ${Number(d.tier) || 0})"></div>` : "";
+    p.label = cfg.label ? `<div class="label">${esc(cfg.label)}</div>` : "";
+    p.rank = has("rank") ? `<div class="rank">${esc(rankLabel(d.rank))}</div>` : "";
+    p.rr = has("rr") && d.rr != null ? `<div class="rr">${d.rr} RR</div>` : "";
+    p.bar = has("bar") ? `<div class="bar"><i style="width:${pct}%"></i></div>` : "";
+    const chips = [];
+    if (has("session")) chips.push(`<span class="chip ${s.gained > 0 ? "pos" : s.gained < 0 ? "neg" : ""}">${signed(s.gained)} RR</span>`);
+    if (has("wl")) chips.push(`<span class="chip"><b class="pos">${s.wins}${T.w}</b> · <b class="neg">${s.losses}${T.l}</b></span>`);
+    if (has("lb") && d.leaderboard) chips.push(`<span class="chip">#${d.leaderboard}</span>`);
+    if (has("peak") && d.peak && d.peak.tier) chips.push(`<span class="chip">${T.peak} <b>${esc(rankLabel(d.peak.rank))}</b></span>`);
+    p.chips = chips.length ? `<div class="stats">${chips.join("")}</div>` : "";
+    p.dots = has("last") && s.last.length ? `<div class="dots">${s.last.map((x) => `<span class="${x}"></span>`).join("")}</div>` : "";
+    return p;
+  }
+
+  function boxClass() {
+    return "box" + (cfg.bg && cfg.border ? " border" : "") + (cfg.bg && cfg.shadow ? " shadow" : "");
+  }
+
+  function render(d) {
+    const p = parts(d);
+    let html;
+    switch (cfg.layout) {
+      case "card":
+        html = `<div class="${boxClass()}">
+          <div class="head">${p.icon}<div class="txt">${p.label}${p.rank}${p.rr ? `<div class="rowline">${p.rr}</div>` : ""}</div></div>
+          ${p.bar}
+          ${p.chips || p.dots ? `<div class="foot">${p.chips}${p.dots}</div>` : ""}
+        </div>`;
+        break;
+      case "minimal": {
+        const items = [p.rank, p.rr, p.chips].filter(Boolean);
+        html = `<div class="${boxClass()}">${p.icon}${items.join('<span class="sep">•</span>')}${p.dots}</div>`;
+        break;
+      }
+      case "banner":
+        html = `<div class="${boxClass()}">${p.icon}<div class="txt">${p.label}${p.rank}${p.bar}</div>
+          ${p.rr || p.chips || p.dots ? `<div class="vsep"></div><div class="txt" style="gap:6px">${p.rr}${p.chips}${p.dots}</div>` : ""}
+        </div>`;
+        break;
+      default: // pill (v1)
+        html = `<div class="${boxClass()}">${p.icon}<div class="txt">
+          ${p.label || p.rr ? `<div class="label">${p.label ? esc(cfg.label) : ""}${p.label && p.rr ? " · " : ""}${p.rr ? (d.rr + " RR") : ""}</div>` : ""}
+          ${p.rank}${p.bar}</div>
+          ${p.chips || p.dots ? `<div class="extra">${p.chips}${p.dots}</div>` : ""}
+        </div>`;
+    }
+    root.innerHTML = html;
+  }
+
+  function renderMessage(msg) {
+    root.innerHTML = `<div class="${boxClass()}"><div class="txt"><div class="label">${esc(msg)}</div><div class="rank">VALORANT</div></div></div>`;
+  }
+
+  // ---------- Données ----------
+  // Dernier rang connu, gardé dans le navigateur d'OBS : si toutes les API sont down,
+  // l'overlay continue d'afficher le dernier rang, même après un redémarrage d'OBS.
+  const cacheKey = `vo2-last-${cfg.name}#${cfg.tag}`.toLowerCase();
+  let last = null;
+  try { const c = JSON.parse(localStorage.getItem(cacheKey) || "null"); if (c && c.ok) last = c; } catch (e) {}
+  const remember = (d) => { try { localStorage.setItem(cacheKey, JSON.stringify(d)); } catch (e) {} };
+  let failures = 0;
+
+  function demoData() {
+    const now = Date.now();
+    const ch = [21, -17, 24, 19, -14, 22, -18, 16];
+    return {
+      ok: true, rank: "GOLD 2", tier: 13, rr: 67, elo: 1167, leaderboard: null,
+      peak: { tier: 15, rank: "PLATINUM 1" },
+      history: ch.map((c, i) => ({ change: c, date: now - (i + 1) * 40 * 60e3, tier: 13 }))
+    };
+  }
+
+  async function update() {
+    if (cfg.demo) { render(demoData()); return; }
+    if (!cfg.name || !cfg.tag) { renderMessage(T.invalid); return; }
+    try {
+      const url = `${cfg.api}?name=${encodeURIComponent(cfg.name)}&tag=${encodeURIComponent(cfg.tag)}&region=${encodeURIComponent(cfg.region)}`;
+      const r = await fetch(url, { cache: "no-store" });
+      const d = await r.json().catch(() => null);
+      if (!d || !d.ok) throw new Error((d && d.error) || `HTTP ${r.status}`);
+      const tierChanged = last && last.tier !== d.tier;
+      last = d;
+      failures = 0;
+      remember(d);
+      render(d);
+      if (tierChanged && cfg.anim.has("flash")) {
+        root.classList.remove("flash"); void root.offsetWidth; root.classList.add("flash");
+      }
+    } catch (e) {
+      console.error("[Valorant overlay]", e);
+      failures++;
+      if (last) render(last); else renderMessage(e.message || T.err);
+      // Nouvel essai rapide après une erreur (15s, 30s, puis rythme normal)
+      if (failures <= 2) setTimeout(update, 15000 * failures);
+    }
+  }
+
+  if (last && !cfg.demo) render(last); else renderMessage(T.loading);
+  update();
+  if (!cfg.demo) setInterval(update, cfg.interval);
+})();
+</script>
+</body>
+</html>
