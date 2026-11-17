@@ -308,6 +308,7 @@
   try { const c = JSON.parse(localStorage.getItem(cacheKey) || "null"); if (c && c.ok) last = c; } catch (e) {}
   const remember = (d) => { try { localStorage.setItem(cacheKey, JSON.stringify(d)); } catch (e) {} };
   let failures = 0;
+  let eloSeen, histTries = 0;
 
   // Région déjà trouvée : évite l'appel d'auto-détection à chaque rafraîchissement
   const regionKey = `vo2-region-${cfg.name}#${cfg.tag}`.toLowerCase();
@@ -318,7 +319,7 @@
   const needsHistory = has("wl") || has("last") || (has("session") && cfg.period !== "stream");
 
   async function fetchPlayer(withHistory) {
-    const url = `${cfg.api}?name=${encodeURIComponent(cfg.name)}&tag=${encodeURIComponent(cfg.tag)}&region=${encodeURIComponent(region)}&history=${withHistory ? 1 : 0}`;
+    const url = `${cfg.api}?name=${encodeURIComponent(cfg.name)}&tag=${encodeURIComponent(cfg.tag)}&region=${encodeURIComponent(region)}&history=${withHistory ? 1 : 0}` + (withHistory ? `&fresh=${Date.now()}` : "");
     const r = await fetch(url, { cache: "no-store" });
     const d = await r.json().catch(() => null);
     if (!d || !d.ok) { const e = new Error((d && d.error) || `HTTP ${r.status}`); e.status = r.status; throw e; }
@@ -341,12 +342,28 @@
     try {
       let d = await fetchPlayer(false);
       if (d.region && d.region !== region) { region = d.region; try { localStorage.setItem(regionKey, region); } catch (e) {} }
-      // Historique : seulement au démarrage ou quand une nouvelle game est passée (elo changé)
-      const newGame = !last || last.elo !== d.elo || last.tier !== d.tier;
-      if (needsHistory && (newGame || !Array.isArray(last && last.history))) {
-        try { d = await fetchPlayer(true); } catch (e) { d.history = last && last.history; }
+      // Historique : on le redemande tant qu'il ne contient pas la dernière game.
+      // (HenrikDev met souvent quelques minutes de plus à publier l'historique que le rang.)
+      const prevHist = last && Array.isArray(last.history) ? last.history : null;
+      const prevHistElo = last ? last.histElo : undefined;
+      if (d.elo !== eloSeen) { eloSeen = d.elo; histTries = 0; }
+      let synced;
+      if (!prevHist) synced = false;
+      else if (prevHist.length && prevHist[0].elo != null && d.elo != null) synced = prevHist[0].elo === d.elo;
+      else synced = prevHistElo === d.elo;
+      if (needsHistory && !synced && histTries < 15) {
+        histTries++;
+        try {
+          const full = await fetchPlayer(true);
+          const h = Array.isArray(full.history) ? full.history : null;
+          d.history = h || prevHist || [];
+          // Au démarrage on prend ce qui vient ; après une game, seulement si elle y figure déjà
+          const hasLatest = h && h.length && h[0].elo === d.elo;
+          d.histElo = (!prevHist && h) || hasLatest ? d.elo : prevHistElo;
+        } catch (e) { d.history = prevHist || []; d.histElo = prevHistElo; }
       } else {
-        d.history = last && Array.isArray(last.history) ? last.history : [];
+        d.history = prevHist || [];
+        d.histElo = prevHistElo;
       }
       const tierChanged = last && last.tier !== d.tier;
       last = d;
